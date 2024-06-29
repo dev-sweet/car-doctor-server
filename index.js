@@ -27,7 +27,7 @@ async function run() {
     const serviceDb = client.db("serviceDb");
     const orderDb = client.db("orderDb");
     const serviceCollection = serviceDb.collection("serviceCollection");
-    const orderCollection = serviceDb.collection("orderCollection");
+    const orderCollection = orderDb.collection("orderCollection");
 
     // services get all
     app.get("/services", async (req, res) => {
@@ -45,10 +45,33 @@ async function run() {
       res.send(result);
     });
 
-    // post an order
+    // orders
     app.post("/orders", async (req, res) => {
       const order = req.body;
       const result = await orderCollection.insertOne(order);
+      res.send(result);
+    });
+
+    app.get("/orders", async (req, res) => {
+      let query = {};
+      if (req.query.email) {
+        query = { email: req.query.email };
+      }
+      const result = await orderCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.patch("/orders/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = { $set: { status: req.body.status } };
+      const result = await orderCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    app.delete("/orders/:id", (req, res) => {
+      const result = orderCollection.deleteOne({
+        _id: new ObjectId(req.params.id),
+      });
       res.send(result);
     });
   } finally {
