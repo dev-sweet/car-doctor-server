@@ -1,14 +1,17 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const port = process.env.PORT || 9000;
 const app = express();
 
 // middle wares
 
-app.use(cors());
+app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
 // connect server to the database
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.mdcv625.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -21,6 +24,21 @@ const client = new MongoClient(uri, {
   },
 });
 
+const verfyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized!" });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized!" });
+    }
+
+    req.user = decoded;
+    next();
+  });
+};
 async function run() {
   try {
     await client.connect();
@@ -29,6 +47,20 @@ async function run() {
     const serviceCollection = serviceDb.collection("serviceCollection");
     const orderCollection = orderDb.collection("orderCollection");
 
+    // auth api
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "7d",
+      });
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: false,
+          sameSite: false,
+        })
+        .send({ success: true });
+    });
     // services get all
     app.get("/services", async (req, res) => {
       const cursor = serviceCollection.find({});
@@ -52,7 +84,10 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/orders", async (req, res) => {
+    app.get("/orders", verfyToken, async (req, res) => {
+      if (req.query.email !== req.user.email) {
+        return res.status(403).json("Forbidded Access!");
+      }
       let query = {};
       if (req.query.email) {
         query = { email: req.query.email };
@@ -68,8 +103,8 @@ async function run() {
       const result = await orderCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
-    app.delete("/orders/:id", (req, res) => {
-      const result = orderCollection.deleteOne({
+    app.delete("/orders/:id", async (req, res) => {
+      const result = await orderCollection.deleteOne({
         _id: new ObjectId(req.params.id),
       });
       res.send(result);
