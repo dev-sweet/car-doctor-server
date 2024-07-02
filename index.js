@@ -24,17 +24,15 @@ const client = new MongoClient(uri, {
   },
 });
 
-const verfyToken = (req, res, next) => {
-  const token = req.cookies?.token;
+const verifyToken = (req, res, next) => {
+  const token = req?.cookies?.token;
   if (!token) {
-    return res.status(401).send({ message: "Unauthorized!" });
+    return res.status(401).send({ message: "unauthorized access!" });
   }
-
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      return res.status(401).send({ message: "Unauthorized!" });
+      return res.status(401).send({ message: "don't verify" });
     }
-
     req.user = decoded;
     next();
   });
@@ -48,17 +46,31 @@ async function run() {
     const orderCollection = orderDb.collection("orderCollection");
 
     // auth api
+
+    // login/signup
     app.post("/jwt", (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: "7d",
       });
+
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
           sameSite: false,
         })
+        .status(200)
+        .send({ success: true });
+    });
+
+    // logout
+    app.post("/logout", (req, res) => {
+      const user = req.body;
+
+      res
+        .status(200)
+        .clearCookie("token", { maxAge: 0 })
         .send({ success: true });
     });
     // services get all
@@ -84,9 +96,10 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/orders", verfyToken, async (req, res) => {
-      if (req.query.email !== req.user.email) {
-        return res.status(403).json("Forbidded Access!");
+    app.get("/orders", verifyToken, async (req, res) => {
+      const user = req.user;
+      if (user.email !== req.query.email) {
+        return res.status(403).send({ message: "forbidded access!" });
       }
       let query = {};
       if (req.query.email) {
